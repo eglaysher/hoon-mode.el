@@ -36,7 +36,13 @@
 
 ;;; Code:
 
+(require 'smie)           ; Simple minded indentation engine
 (require 'cl-lib)
+
+(defconst hoon-indent-basic 2
+  "The amount of indentation.
+
+This is always 2 in Tlon style hoon, which is the only style.")
 
 (defvar hoon-mode-syntax-table
   (let ((st (make-syntax-table)))
@@ -49,7 +55,7 @@
     (modify-syntax-entry ?\n "> b" st)
 
     ;; Add dash to the symbol class since it can be part of identifier.
-    (modify-syntax-entry ?- "_" st)
+    (modify-syntax-entry ?- "_." st)
 
     ;; Put all other characters which can be part of runes in the punctuation
     ;; class so that forward and backward work properly.
@@ -63,6 +69,42 @@
     (modify-syntax-entry ?~ "." st)
     st)
   "Syntax table for `hoon-mode'.")
+
+(defconst hoon-smie-grammar
+  (smie-prec2->grammar
+   (smie-merge-prec2s
+    (smie-bnf->prec2
+     '((id)
+       (hoon ("|%" arm "--")
+             ("$:" "stuff" "=="))
+       (arm ("++" "STRING"))
+       )))))
+
+(defun hoon-smie-rules (kind token)
+  (cond
+   ((and (eq kind :before) (equal token "++")) 0)
+   ((and (eq kind :before) (equal token "--")) 0)
+   (t 0)))
+
+(defvar hoon-smie-verbose-p t
+  "Emit context information about the current syntax state.")
+
+(defmacro hoon-smie-debug (message &rest format-args)
+  `(progn
+     (when hoon-smie-verbose-p
+       (message (format ,message ,@format-args)))
+     nil))
+
+(defun verbose-hoon-smie-rules (kind token)
+  (let ((value (hoon-smie-rules kind token)))
+    (hoon-smie-debug
+     "%s '%s'; sibling-p:%s parent:%s hanging:%s = %s"
+     kind token
+     (ignore-errors (smie-rule-sibling-p))
+     (ignore-errors smie--parent)
+     (ignore-errors (smie-rule-hanging-p))
+     value)
+    value))
 
 (eval-and-compile
   (defconst hoon-rx-constituents
@@ -259,6 +301,7 @@ regexp. Because of =/, this rule must run after the normal mold rule.")
   (set (make-local-variable 'imenu-generic-expression)
        hoon-imenu-generic-expression)
   (set (make-local-variable 'outline-regexp) hoon-outline-regexp)
+  (smie-setup hoon-smie-grammar #'verbose-hoon-smie-rules)
 
   ;; Hoon files often have the same file name in different
   ;; directories. Previously, this was manually handled by hoon-mode instead of
