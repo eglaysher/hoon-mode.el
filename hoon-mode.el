@@ -79,20 +79,20 @@ This is always 2 in Tlon style hoon, which is the only style.")
     (message "Value: '%s'" value)
     value))
 
-  ;; here we have to emit ACE and GAP as the symbol types from the lexer.
 (defun hoon-smie--forward-token ()
-  ;; ok, so the multiline whitespace regex matches, but `skip-syntax-forward'
-  ;; isn't matching newlines.
-  (message "Is: %s" (looking-at "\\s-*\\(\n\\s-*\\)*"))
   (cond
-   ((looking-at "\\s-*\\(\n\\s-*\\)*") (skip-syntax-forward "-") (message "GAP") "GAP")
-   ;; is the default token forward skipping whitespace after? that would be
-   ;; unfortunate.
+   ((looking-at "\\(\\s-\\|\n\\)+")
+    (goto-char (match-end 0))
+    "GAP")
    (t (smie-default-forward-token))))
 
-(defun hoon-smie--backwards-token ()
+(defun hoon-smie--backward-token ()
   (interactive)
-  (smie-default-backward-token))
+  (cond
+   ((looking-back "\\(\\s-\\|\n\\)+" nil t)
+    (goto-char (match-beginning 0))
+    "GAP")
+   (t (smie-default-backward-token))))
 
 (defconst hoon-smie-grammar
   (smie-prec2->grammar
@@ -100,11 +100,18 @@ This is always 2 in Tlon style hoon, which is the only style.")
     (smie-bnf->prec2
      '((id)
        (hoon ("|%" "GAP" arm "GAP" "--")
-             ("$:" "stuff" "=="))
+             ("$:" "GAP" hoon-list "GAP" "==")
+             (id))
+       (hoon-list (hoon)
+                  (hoon "GAP" hoon-list))
        (arm ("++" "GAP" id "GAP" hoon))
-       )))))
+       )
+     '((assoc "GAP"))))))
 
 (defun hoon-smie-rules (kind token)
+  (when (and hoon-smie-verbose-p
+             (not (use-region-p)))
+    (message "%s %s" kind token))
   (cond
    ((and (eq kind :before) (equal token "++")) 0)
    ((and (eq kind :before) (equal token "--")) 0)
@@ -325,9 +332,9 @@ regexp. Because of =/, this rule must run after the normal mold rule.")
   (set (make-local-variable 'imenu-generic-expression)
        hoon-imenu-generic-expression)
   (set (make-local-variable 'outline-regexp) hoon-outline-regexp)
-  ;; (smie-setup hoon-smie-grammar #'verbose-hoon-smie-rules
-  ;;             :forward-token 'hoon-smie--forward-token
-  ;;             :backwads-token 'hoon-smie--backwards-token)
+  (smie-setup hoon-smie-grammar #'verbose-hoon-smie-rules
+              :forward-token 'hoon-smie--forward-token
+              :backward-token 'hoon-smie--backward-token)
 
   ;; Hoon files often have the same file name in different
   ;; directories. Previously, this was manually handled by hoon-mode instead of
