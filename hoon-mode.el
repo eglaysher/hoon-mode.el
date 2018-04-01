@@ -1,5 +1,6 @@
 ;;; hoon-mode.el --- Major mode for editing hoon files for urbit
 
+
 ;; Copyright (C) 2014–2016 Urbit
 
 ;; Author:
@@ -70,14 +71,37 @@ This is always 2 in Tlon style hoon, which is the only style.")
     st)
   "Syntax table for `hoon-mode'.")
 
+;; Unsure how to debug the lexer. Do I just 
+
+(defun verbose-hoon-smie--forward-token ()
+  (interactive)
+  (let ((value (hoon-smie--forward-token)))
+    (message "Value: '%s'" value)
+    value))
+
+  ;; here we have to emit ACE and GAP as the symbol types from the lexer.
+(defun hoon-smie--forward-token ()
+  ;; ok, so the multiline whitespace regex matches, but `skip-syntax-forward'
+  ;; isn't matching newlines.
+  (message "Is: %s" (looking-at "\\s-*\\(\n\\s-*\\)*"))
+  (cond
+   ((looking-at "\\s-*\\(\n\\s-*\\)*") (skip-syntax-forward "-") (message "GAP") "GAP")
+   ;; is the default token forward skipping whitespace after? that would be
+   ;; unfortunate.
+   (t (smie-default-forward-token))))
+
+(defun hoon-smie--backwards-token ()
+  (interactive)
+  (smie-default-backward-token))
+
 (defconst hoon-smie-grammar
   (smie-prec2->grammar
    (smie-merge-prec2s
     (smie-bnf->prec2
      '((id)
-       (hoon ("|%" arm "--")
+       (hoon ("|%" "GAP" arm "GAP" "--")
              ("$:" "stuff" "=="))
-       (arm ("++" "STRING"))
+       (arm ("++" "GAP" id "GAP" hoon))
        )))))
 
 (defun hoon-smie-rules (kind token)
@@ -301,7 +325,9 @@ regexp. Because of =/, this rule must run after the normal mold rule.")
   (set (make-local-variable 'imenu-generic-expression)
        hoon-imenu-generic-expression)
   (set (make-local-variable 'outline-regexp) hoon-outline-regexp)
-  (smie-setup hoon-smie-grammar #'verbose-hoon-smie-rules)
+  ;; (smie-setup hoon-smie-grammar #'verbose-hoon-smie-rules
+  ;;             :forward-token 'hoon-smie--forward-token
+  ;;             :backwads-token 'hoon-smie--backwards-token)
 
   ;; Hoon files often have the same file name in different
   ;; directories. Previously, this was manually handled by hoon-mode instead of
